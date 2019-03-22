@@ -28,10 +28,7 @@ class hypergraph:
         
         self.nodes = list(set([v for f in self.C for v in f]))
         self.n = max(self.nodes) + 1 #assumes first node is 0
-#         if n_nodes is None:
-#             self.n = len(self.nodes)
-#         else: 
-#             self.n = n_nodes
+
         if node_labels is not None:
             self.node_labels = node_labels
         self.m = len(self.C)
@@ -50,6 +47,10 @@ class hypergraph:
         self.MH_steps = 0
                 
     def node_degrees(self, by_dimension = False):
+        '''
+        Return a np.array() of node degrees. If by_dimension, return a 2d np.array() 
+        in which each entry gives the number of edges of each dimension incident upon the given node. 
+        '''
         if not by_dimension:
             return(self.D)
         else:
@@ -58,16 +59,18 @@ class hypergraph:
                 for v in f:
                     D[v, len(f)-1] += 1
             return(D)
+        
     def edge_dimensions(self):
+        '''
+        Return an np.array() of edge dimensions. 
+        '''
         return(self.K)
     
-    def induced_graph(self):
-        print('not implemented')
-    
-    def bipartite_graph(self):
-        print('not implemented')
-    
     def dual_graph(self):
+        '''
+        Return a networkx Graph() in which each node corresponds to a hyperedge 
+        and two nodes are linked if the corresponding edges intersect in the primal hypergraph. 
+        '''
         H = nx.Graph()
 
         counts = Counter(self.C)
@@ -86,9 +89,15 @@ class hypergraph:
         return(H)
     
     def get_edges(self, node):
+        '''
+        Return a list of edges incident upon a specified node. 
+        '''
         return([f for f in self.C if node in f])
     
     def remove_degeneracy(self, verbose = True):
+        '''
+        Use pairwise reshuffles to remove degenerate edges, as may be generated in stub-matching. 
+        '''
         m_degenerate = self.check_degeneracy()
         while self.check_degeneracy() > 0:
             for i in range(len(self.C)):
@@ -99,7 +108,18 @@ class hypergraph:
         if verbose:
             print(str(m_degenerate) + ' degeneracies removed, ' + str(self.check_degeneracy()) + ' remain.')
     
-    def MH(self, n_steps = 1000, sample_every = 5000, sample_fun = None, verbose = True, label = 'edge', n_clash = 0, message = True, **kwargs):
+    def MH(self, n_steps = 1000, sample_every = 5000, sample_fun = None, verbose = True, label = 'edge', n_clash = 1, message = True, **kwargs):
+        '''
+        Conduct Metropolis-Hastings Monte Carlo in order to approximately sample from the space of appropriately-labeled graphs. 
+        n_steps: number of steps to perform
+        sample_every: if sample_fun is provided, evaluate it every sample_every steps. 
+        sample_fun: sampling function. Should take a hypergraph as its first argument. 
+        verbose: if True, print a finishing message with descriptive summaries of the algorithm run. 
+        label: the label space to use. Can take values in ['vertex' , 'stub', 'edge']. 
+        n_clash: the number of clashes permitted when updating the edge counts in vertex-labeled MH. n_clash = 0 will be exact but very slow. n_clash >= 2 may lead to performance gains at the cost of decreased accuracy. 
+        message: if True, print a message every sample_every steps. 
+        **kwargs: additional arguments passed to sample_fun
+        '''
         if (label == 'edge') or (label == 'stub'):
             self.stub_edge_MH(n_steps = n_steps, sample_every = sample_every, sample_fun = sample_fun, verbose = verbose, label = label, message = message,  **kwargs)
         elif label == 'vertex':
@@ -109,7 +129,7 @@ class hypergraph:
     
     def stub_edge_MH(self, n_steps = 1000, sample_every = 50, sample_fun = None, verbose = True, label = 'edge', message = True,  **kwargs):
         '''
-          Not yet correct for stub-matching, but ok for edge I think.   
+        See description of self.MH()
         '''
         
         C_new = [list(c) for c in self.C]
@@ -159,7 +179,7 @@ class hypergraph:
     
     def vertex_labeled_MH(self, n_steps = 10000, sample_every = 500, sample_fun = None, verbose = False, n_clash = 0, message = True, **kwargs):
         '''
-        The parameter n_clash controls the number of permitted clashes within each epoch
+        See description of self.MH()
         '''
         
         rand = np.random.rand
@@ -193,7 +213,7 @@ class hypergraph:
             
             # within each epoch
             
-            k_rand = 20000 # generate lots of random numbers at a time
+            k_rand = 20000 
             k_ = 0
             IJ = randint(0, m, k_rand)
             A = rand(k_rand)
@@ -205,11 +225,6 @@ class hypergraph:
                 i,j = (IJ[k_],IJ[k_+1])
                 k_ += 2
                 
-#                 # pick two simplices
-                
-# #                 i, j, f1, f2, g1, g2 = proposal(l)
-                
-#                 i,j = np.random.randint(0,m,2)
                 f1, f2 = l[i], l[j]
                 while f1 == f2:
                     i,j = (IJ[k_],IJ[k_+1])
@@ -255,48 +270,16 @@ class hypergraph:
         
     
     def check_degeneracy(self):
-        
-        return np.sum([is_degenerate(f) for f in self.C])
-
-    def MH_with_stopping(self, memory_length = 5, n_steps = 10**5):
-    
-        deg = self.node_degrees(by_dimension=True).copy()
-        deg_unif = np.outer(deg.mean(axis = 1), deg.mean(axis = 0))
-        deg_unif = deg_unif / deg_unif.sum()
-
-        def sq_dist(self):
-            deg_sample = self.node_degrees(by_dimension=True)    
-            deg_sample = deg_sample / deg_sample.sum()
-            return ((deg_sample - deg_unif)**2).mean()
-
-        v = np.array([])
-        done = False
-
-        i = 0
-        
-        while not done:
-            self.MH(edge_labeled=True, 
-                 joint=False, 
-                 n_steps=n_steps, 
-                 verbose=False)
-            new_val = sq_dist(self)
-
-            if len(v) < memory_length:
-                v = np.concatenate(([new_val], v))
-            else:
-                v = np.concatenate(([new_val], v[0:-1]))
-            done = (np.mean(new_val >= v) > .99) & (len(v) == memory_length)
-            i += 1
-        return(i * n_steps)
-        
+        '''
+        Find the number of degeneracies in self.C
+        '''
+        return np.sum([is_degenerate(f) for f in self.C])        
     def choose_nodes(self, n_samples, choice_function = 'uniform'):
-        
+        '''
+        Utility function for choosing pairs of nodes from self.C, used in assortativity calculations. 
+        '''
         D = self.node_degrees()
-        
-#         def uniform(x):
-#             ind = np.random.choice(x, size = 2, replace = False)
-#             return(ind)
-        
+ 
         def uniform(x):
             i = np.random.randint(len(x))
             j = i
@@ -338,6 +321,9 @@ class hypergraph:
         return(v)
             
     def assortativity(self, n_samples = 10, choice_function = 'uniform', method = 'pearson'):
+        '''
+        Compute the approximate degree assortativity of a hypergraph using the specified choice_function and method in ['spearman', 'pearson']
+        '''
         D = self.node_degrees()
         arr = np.array(self.choose_nodes(n_samples, choice_function))
         arr = D[arr]
@@ -350,20 +336,12 @@ class hypergraph:
             
         return(np.corrcoef(arr.T))[0,1]
         
-            
-        
-            
-
-    
-    
-    
-    
-        
 is_degenerate = lambda x: len(set(x)) < len(x)
 
-
-
 def proposal_generator(m):
+    '''
+    Propose a transition in stub- and edge-labeled MH. 
+    '''
     def proposal(edge_list):
         i,j = np.random.randint(0,m,2)
         f1, f2 = edge_list[i], edge_list[j]
@@ -372,6 +350,9 @@ def proposal_generator(m):
     return(proposal)
 
 def acceptance_prob(f1, f2, g1, g2, label = 'stub', counts = None):
+    '''
+    Compute the acceptance probability for a given proposed transition
+    '''
     if label == 'stub':
         if (g1 == f1) or (g1 == f2):
             J = len(set(f1).intersection(f2))
@@ -387,43 +368,9 @@ def acceptance_prob(f1, f2, g1, g2, label = 'stub', counts = None):
             return(0)
         else:
             return(1.0 /(counts[f1] * counts[f2]))
-    return(1.0) # if nothing is funky
+    return(1.0) 
 
 
-# def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
-#     '''
-
-#     '''
-#     f = list(f1) + list(f2)
-#     s = set(f)
-    
-#     intersection = set(f1).intersection(set(f2))
-#     ix = list(intersection)
-    
-#     g1 = ix.copy()
-#     g2 = ix.copy()
-    
-#     for v in ix:
-#         f.remove(v)
-#         f.remove(v)
-    
-#     for v in f:
-#         if (len(g1) < len(f1)) & (len(g2) < len(f2)):
-#             if np.random.rand() < .5:
-#                 g1.append(v)
-#             else:
-#                 g2.append(v)
-#         elif len(g1) < len(f1):
-#             g1.append(v)
-#         elif len(g2) < len(f2):
-#             g2.append(v)
-#     if len(g1) != len(f1):
-#         print('oops')
-#         print(f1, f2, g1, g2)
-#     return (tuple(sorted(g1)), tuple(sorted(g2)))
-  
-    
-    
     
 def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
     
@@ -432,22 +379,12 @@ def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
         if len(set(f1).intersection(set(f2))) == 0: 
             return(tuple(sorted([f1[0], f2[1]])),tuple(sorted([f2[0], f1[1]])))
     
-    
+    # general case
     
     f1 = set(f1)
     f2 = set(f2)
     ix = f1.intersection(f2)
-    
-    # slightly less easy case: disjoint intersection
-    
-#     if len(ix) == 0:
-#         diff = list(f1.union(f2))
-#         random.shuffle(diff)
-#         g1 = diff[0:len(f1)]
-#         g2 = diff[len(f1):len(f2)]
-#         return(g1, g2)
-    
-    # worst case: there is overlap
+  
     diff = f1.symmetric_difference(f2)
     diff = list(diff)
     
@@ -465,27 +402,6 @@ def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
    
     return(tuple(sorted(g1)), tuple(sorted(g2)))
      
-def line_graph(C, weighted = False, as_hyper = False, multi = True):
-    '''
-    Compute the line graph corresponding to a given hypergraph. Can be slow when many high-dimensional edges are present. 
-    '''
-    if not as_hyper:
-        if multi:
-            G = nx.MultiGraph()
-        else:
-            G = nx.Graph()
-        G.add_nodes_from(C.nodes)
-        for f in C.C:
-            if weighted:
-                if len(f) >= 2:
-                    G.add_edges_from(combinations(f, 2), weight = 1.0/(len(f) - 1))
-            else :
-                G.add_edges_from(combinations(f, 2))
-        return(G)
-    else:
-        G = [f for F in C.C for f in combinations(F, 2)]
-        return(hypergraph(G, n_nodes = len(C.nodes)))
-  
 def line_graph(C, weighted = False, as_hyper = False, multi = True):
     '''
     Compute the line graph corresponding to a given hypergraph. Can be slow when many high-dimensional edges are present. 
