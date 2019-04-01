@@ -373,34 +373,37 @@ def acceptance_prob(f1, f2, g1, g2, label = 'stub', counts = None):
 
     
 def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
+    '''
+    Randomly reshuffle the nodes of two edges while preserving their sizes.
+    '''
     
-    # easy case: disjoint binary edges
-    if (len(f1) == 2) & (len(f2) == 2):
-        if len(set(f1).intersection(set(f2))) == 0: 
-            return(tuple(sorted([f1[0], f2[1]])),tuple(sorted([f2[0], f1[1]])))
+    f = list(f1) + list(f2)
+    s = set(f)
     
-    # general case
-    
-    f1 = set(f1)
-    f2 = set(f2)
-    ix = f1.intersection(f2)
-  
-    diff = f1.symmetric_difference(f2)
-    diff = list(diff)
-    
-    len_ix = len(ix)
-    i = len(f1)
-    j = len(f2)
+    intersection = set(f1).intersection(set(f2))
+    ix = list(intersection)
     
     g1 = ix.copy()
     g2 = ix.copy()
     
-    random.shuffle(diff)
-        
-    g1 = g1.union(set(diff[0:i-len_ix]))
-    g2 = g2.union(set(diff[(i-len_ix):len(diff)]))
-   
-    return(tuple(sorted(g1)), tuple(sorted(g2)))
+    for v in ix:
+        f.remove(v)
+        f.remove(v)
+    
+    for v in f:
+        if (len(g1) < len(f1)) & (len(g2) < len(f2)):
+            if np.random.rand() < .5:
+                g1.append(v)
+            else:
+                g2.append(v)
+        elif len(g1) < len(f1):
+            g1.append(v)
+        elif len(g2) < len(f2):
+            g2.append(v)
+    if len(g1) != len(f1):
+        print('oops')
+        print(f1, f2, g1, g2)
+    return (tuple(sorted(g1)), tuple(sorted(g2)))
      
 def line_graph(C, weighted = False, as_hyper = False, multi = True):
     '''
