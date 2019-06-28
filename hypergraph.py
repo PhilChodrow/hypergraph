@@ -66,6 +66,17 @@ class hypergraph:
         '''
         return(self.K)
     
+    def node_dimension_matrix(self):
+        '''
+        Return a matrix in which the i,j entry gives the number of dimension j edges incident on node i. 
+        '''
+        A = np.zeros((self.n, max([len(f) for f in self.C])+1))
+        for f in self.C:
+            for v in f:
+                A[v, len(f)] += 1
+        return(A)
+    
+    
     def line_graph(self):
         '''
         Return a networkx Graph() in which each node corresponds to a hyperedge 
@@ -118,6 +129,7 @@ class hypergraph:
         label: the label space to use. Can take values in ['vertex' , 'stub', 'edge']. 
         n_clash: the number of clashes permitted when updating the edge counts in vertex-labeled MH. n_clash = 0 will be exact but very slow. n_clash >= 2 may lead to performance gains at the cost of decreased accuracy. 
         message: if True, print a message every sample_every steps. 
+        detailed: if True, preserve the number of edges of given dimension incident to each node
         **kwargs: additional arguments passed to sample_fun
         '''
         if (label == 'edge') or (label == 'stub'):
@@ -127,7 +139,7 @@ class hypergraph:
         else:
             print('not implemented')
     
-    def stub_edge_MH(self, n_steps = 1000, sample_every = 50, sample_fun = None, verbose = True, label = 'edge', message = True,  **kwargs):
+    def stub_edge_MH(self, n_steps = 1000, sample_every = 50, sample_fun = None, verbose = True, label = 'edge', message = True,  detailed = False, **kwargs):
         '''
         See description of self.MH()
         '''
@@ -135,7 +147,7 @@ class hypergraph:
         C_new = [list(c) for c in self.C]
         m = len(C_new)
         
-        proposal = proposal_generator(m)
+        proposal = proposal_generator(m, detailed)
 
         def MH_step(label = 'edge'):
             i, j, f1, f2, g1, g2 = proposal(C_new)
@@ -151,7 +163,6 @@ class hypergraph:
         sample = sample_fun is not None
         if sample:
             v = {}
-        
         
         n = 0
         n_rejected = 0
@@ -177,7 +188,7 @@ class hypergraph:
         if sample:
             return v
     
-    def vertex_labeled_MH(self, n_steps = 10000, sample_every = 500, sample_fun = None, verbose = False, n_clash = 0, message = True, **kwargs):
+    def vertex_labeled_MH(self, n_steps = 10000, sample_every = 500, sample_fun = None, verbose = False, n_clash = 0, message = True, detailed = False, **kwargs):
         '''
         See description of self.MH()
         '''
@@ -230,6 +241,15 @@ class hypergraph:
                     i,j = (IJ[k_],IJ[k_+1])
                     k_ += 2
                     f1, f2 = l[i], l[j]
+                if detailed:
+                    while len(f1) != len(f2):
+                        i,j = (IJ[k_],IJ[k_+1])
+                        k_ += 2
+                        f1, f2 = l[i], l[j]
+                        while f1 == f2:
+                            i,j = (IJ[k_],IJ[k_+1])
+                            k_ += 2
+                            f1, f2 = l[i], l[j]
                 if A[k_] > 1.0 /(c[f1] * c[f2]):
                     n_rejected += 1
                 else: # if proposal was accepted
@@ -338,13 +358,17 @@ class hypergraph:
         
 is_degenerate = lambda x: len(set(x)) < len(x)
 
-def proposal_generator(m):
+def proposal_generator(m, detailed = False):
     '''
     Propose a transition in stub- and edge-labeled MH. 
     '''
     def proposal(edge_list):
         i,j = np.random.randint(0,m,2)
         f1, f2 = edge_list[i], edge_list[j]
+        if detailed: 
+            while len(f1) != len(f2):
+                i,j = np.random.randint(0,m,2)
+                f1, f2 = edge_list[i], edge_list[j]
         g1, g2 = pairwise_reshuffle(f1, f2, True)
         return(i, j, f1, f2, g1, g2)
     return(proposal)
@@ -370,8 +394,6 @@ def acceptance_prob(f1, f2, g1, g2, label = 'stub', counts = None):
             return(1.0 /(counts[f1] * counts[f2]))
     return(1.0) 
 
-
-    
 def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
     '''
     Randomly reshuffle the nodes of two edges while preserving their sizes.
