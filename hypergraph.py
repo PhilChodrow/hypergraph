@@ -66,7 +66,7 @@ class hypergraph:
         '''
         return(self.K)
     
-    def dual_graph(self):
+    def line_graph(self):
         '''
         Return a networkx Graph() in which each node corresponds to a hyperedge 
         and two nodes are linked if the corresponding edges intersect in the primal hypergraph. 
@@ -405,9 +405,9 @@ def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
         print(f1, f2, g1, g2)
     return (tuple(sorted(g1)), tuple(sorted(g2)))
      
-def line_graph(C, weighted = False, as_hyper = False, multi = True):
+def projected_graph(C, weighted = False, as_hyper = False, multi = True):
     '''
-    Compute the line graph corresponding to a given hypergraph. Can be slow when many high-dimensional edges are present. 
+    Compute the projected (clique) graph corresponding to a given hypergraph. Can be slow when many high-dimensional edges are present. 
     '''
     if not as_hyper:
         if multi:
