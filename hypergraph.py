@@ -1,14 +1,6 @@
 '''
 An object of class hypergraph is a list of tuples on a specified node set, which can be implicit. 
-It has various methods for returning quantities of interest. 
-These include: 
-
-    1. Degree sequence of nodes. 
-    2. Degree sequence of hyper-edges. 
-    3. Induced graph of simplices, with edges weighted according to dimension of incident faces. 
-    4. Simplicial complex representation. 
-
-This would also be a convenient class for implementing Metropolis-Hastings. 
+It is equipped with methods for computing hypergraph moments of interest and running Markov Chain Monte Carlo. 
 '''
 
 import numpy as np
@@ -24,27 +16,35 @@ import random
 class hypergraph:
     
     def __init__(self, C, n_nodes = None, node_labels = None):
-        self.C = [tuple(sorted(f)) for f in C]
         
-        self.nodes = list(set([v for f in self.C for v in f]))
-        self.n = max(self.nodes) + 1 #assumes first node is 0
+        
+        self.C = [tuple(sorted(f)) for f in C] # edge list
+        
+        self.nodes = list(set([v for f in self.C for v in f])) # node list
+        self.n = len(self.nodes) # number of nodes
 
+        # optional node labels -- not really used for anything at the moment
         if node_labels is not None:
             self.node_labels = node_labels
+        
+        # number of edges
         self.m = len(self.C)
              
-        # node degrees
+        # node degree vector
         D = np.zeros(self.n)
         for f in self.C:
             for v in f:
                 D[v] += 1
         self.D = D
         
+        # edge dimension sequence
         K = np.array([len(f) for f in self.C])
         self.K = K
         
+        # bookkeeping for Monte Carlo
         self.MH_rounds = 0
         self.MH_steps = 0
+        self.acceptance_rate = 0 
                 
     def node_degrees(self, by_dimension = False):
         '''
@@ -119,27 +119,24 @@ class hypergraph:
         if verbose:
             print(str(m_degenerate) + ' degeneracies removed, ' + str(self.check_degeneracy()) + ' remain.')
     
-    def MH(self, n_steps = 1000, sample_every = 5000, sample_fun = None, verbose = True, label = 'edge', n_clash = 1, message = True, **kwargs):
+    def MH(self, n_steps = 1000, verbose = True, label = 'edge', n_clash = 1, detailed = False, **kwargs):
         '''
-        Conduct Metropolis-Hastings Monte Carlo in order to approximately sample from the space of appropriately-labeled graphs. 
+        Conduct Markov Chain Monte Carlo in order to approximately sample from the space of appropriately-labeled graphs. 
         n_steps: number of steps to perform
-        sample_every: if sample_fun is provided, evaluate it every sample_every steps. 
-        sample_fun: sampling function. Should take a hypergraph as its first argument. 
         verbose: if True, print a finishing message with descriptive summaries of the algorithm run. 
         label: the label space to use. Can take values in ['vertex' , 'stub', 'edge']. 
         n_clash: the number of clashes permitted when updating the edge counts in vertex-labeled MH. n_clash = 0 will be exact but very slow. n_clash >= 2 may lead to performance gains at the cost of decreased accuracy. 
-        message: if True, print a message every sample_every steps. 
         detailed: if True, preserve the number of edges of given dimension incident to each node
         **kwargs: additional arguments passed to sample_fun
         '''
         if (label == 'edge') or (label == 'stub'):
-            self.stub_edge_MH(n_steps = n_steps, sample_every = sample_every, sample_fun = sample_fun, verbose = verbose, label = label, message = message,  **kwargs)
+            self.stub_edge_MH(n_steps = n_steps, verbose = verbose, label = label, detailed = detailed, **kwargs)
         elif label == 'vertex':
-            self.vertex_labeled_MH(n_steps = n_steps, sample_every = sample_every, sample_fun = sample_fun, verbose = verbose, n_clash = n_clash, message = message, **kwargs)
+            self.vertex_labeled_MH(n_steps = n_steps, verbose = verbose, n_clash = n_clash, detailed = detailed, **kwargs)
         else:
             print('not implemented')
     
-    def stub_edge_MH(self, n_steps = 1000, sample_every = 50, sample_fun = None, verbose = True, label = 'edge', message = True,  detailed = False, **kwargs):
+    def stub_edge_MH(self, n_steps = 1000, verbose = True, label = 'edge',  detailed = False, message = True, **kwargs):
         '''
         See description of self.MH()
         '''
@@ -151,42 +148,22 @@ class hypergraph:
 
         def MH_step(label = 'edge'):
             i, j, f1, f2, g1, g2 = proposal(C_new)
-            a = acceptance_prob(f1, f2, g1, g2, label = label)
-            if np.random.rand() > a:
-                return(False)
-            else:
-                C_new[i] = sorted(g1)
-                C_new[j] = sorted(g2)
-                return(True)
-            
-        # main loop
-        sample = sample_fun is not None
-        if sample:
-            v = {}
+            C_new[i] = sorted(g1)
+            C_new[j] = sorted(g2)
         
         n = 0
         n_rejected = 0
         
         while n < n_steps:
-            if MH_step():
-                n += 1
-                if n % sample_every == 0:
-                    if sample:
-                        new = sample_fun(self, **kwargs)
-                        v.update({n:new})
-                        if verbose:
-                            print('Current value: ' + str(new))
-                    elif verbose:
-                            print('Current iteration: ' + str(n) + '. Steps rejected: ' + str(n_rejected))
-            else:
-                n_rejected += 1
-        if message:
-            print(str(n) + ' steps taken, ' + str(n_rejected) + ' proposals rejected.')
+            MH_step()
+            n += 1
+            
         self.C = [tuple(sorted(f)) for f in C_new]
         self.MH_steps += n
         self.MH_rounds += 1
-        if sample:
-            return v
+        
+        if message: 
+            print(str(n_steps) + ' steps completed.')
     
     def vertex_labeled_MH(self, n_steps = 10000, sample_every = 500, sample_fun = None, verbose = False, n_clash = 0, message = True, detailed = False, **kwargs):
         '''
@@ -195,11 +172,7 @@ class hypergraph:
         
         rand = np.random.rand
         randint = np.random.randint
-        
-        sample = sample_fun is not None
-        if sample:
-            v = {}
-        
+                
         k = 0
         done = False
         c = Counter(self.C)
@@ -224,7 +197,8 @@ class hypergraph:
             
             # within each epoch
             
-            k_rand = 20000 
+            k_rand = 20000       # generate many random numbers at a time
+            
             k_ = 0
             IJ = randint(0, m, k_rand)
             A = rand(k_rand)
@@ -250,43 +224,36 @@ class hypergraph:
                             i,j = (IJ[k_],IJ[k_+1])
                             k_ += 2
                             f1, f2 = l[i], l[j]
-                if A[k_] > 1.0 /(c[f1] * c[f2]):
+                            
+                inter = 2**(-len((set(f1).intersection(set(f2)))))
+                if A[k_] > inter /(c[f1] * c[f2]):
                     n_rejected += 1
+                    k += 1
                 else: # if proposal was accepted
                     g1, g2 = pairwise_reshuffle(f1, f2, True)    
-                    if (f1 == g1) or (f1 == g2):
-                        n_rejected += 1
-                    else: # if proposal was not for an identical state
-                        
-                        # check these simplices against the remove list
-                        num_clash += remove.count(f1) + remove.count(f2)
-                        if (num_clash >= n_clash) & (n_clash >=1):
-                            break
-                        else:
-                            remove.append(f1)
-                            remove.append(f2)
-                            add.append(g1)
-                            add.append(g2)
-                            if k % sample_every == 0:
-                                if sample:
-                                    new = sample_fun(self, **kwargs)
-                                    v.update({k:new})
-                            k += 1
-                        if n_clash == 0:
-                            break
+                    num_clash += remove.count(f1) + remove.count(f2)
+                    if (num_clash >= n_clash) & (n_clash >=1):
+                        break
+                    else:
+                        remove.append(f1)
+                        remove.append(f2)
+                        add.append(g1)
+                        add.append(g2)
+                        k += 1
+                    if n_clash == 0:
+                        break
                 
             add = Counter(add)
             add.subtract(Counter(remove))
             
             c.update(add) 
-            done = k>=n_steps
+            done = k - n_rejected>=n_steps
         if message:
-            print(str(epoch_num) + ' epochs completed, ' + str(k) + ' steps taken, ' + str(n_rejected) + ' proposals rejected.')
+            print(str(epoch_num) + ' epochs completed, ' + str(k - n_rejected) + ' steps taken, ' + str(n_rejected) + ' steps rejected.')
         self.C = [tuple(sorted(f)) for f in list(c.elements())]
-        self.MH_steps += k
+        self.MH_steps += k - n_rejected
         self.MH_rounds += 1
-        if sample:
-            return(v)
+        self.acceptance_rate = (1.0*(k - n_rejected)) / (k)
         
     
     def check_degeneracy(self):
@@ -372,27 +339,6 @@ def proposal_generator(m, detailed = False):
         g1, g2 = pairwise_reshuffle(f1, f2, True)
         return(i, j, f1, f2, g1, g2)
     return(proposal)
-
-def acceptance_prob(f1, f2, g1, g2, label = 'stub', counts = None):
-    '''
-    Compute the acceptance probability for a given proposed transition
-    '''
-    if label == 'stub':
-        if (g1 == f1) or (g1 == f2):
-            J = len(set(f1).intersection(f2))
-            return(1.0 - 2.0**(-J))
-    elif label == 'edge':
-        if f1 == f2:
-            return 0
-        elif (g1 == f1) or (g1 == f2):
-            J = len(set(f1).intersection(f2))
-            return(1 - 2.0**(-(J+1)))
-    elif label == 'vertex':
-        if (f1 == g1) or (f1 == g2):
-            return(0)
-        else:
-            return(1.0 /(counts[f1] * counts[f2]))
-    return(1.0) 
 
 def pairwise_reshuffle(f1, f2, preserve_dimensions = True):
     '''
