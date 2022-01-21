@@ -2,7 +2,7 @@ backcall==0.1.0
 cycler==0.10.0
 decorator==4.3.2
 ipykernel==5.1.0
-ipython==7.3.0
+ipython==7.16.3
 ipython-genutils==0.2.0
 jedi==0.13.2
 jupyter-client==5.2.4
